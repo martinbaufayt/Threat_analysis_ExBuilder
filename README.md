@@ -18,6 +18,7 @@ Users interactively draw a point, polyline, or polygon on a map, select a threat
 - Input sketch rendered in blue (transparent fill, opaque outline)
 - **Cumulative zones** — each new sketch adds to the map without clearing previous zones
 - **Clickable buffers** — click any zone to open a popup with zone type, threat type, distance, and unit
+- **Fixed coordinate input** — place a threat point by typing coordinates in DD, DDM, MGRS, or UTM (any number of decimals accepted)
 - Distance labels on both zones
 - Unit toggle: meters (default) or feet
 - Auto-zoom to the newly created zones
@@ -113,8 +114,9 @@ In the ExB builder, open the widget settings panel to:
    - Inner red zone: Mandatory Evacuation
    - Outer orange zone: Preferred Evacuation
 6. Click any buffer zone to open a popup showing the zone type, threat type, distance, and unit.
-7. Repeat from step 1 to add more zones — previous zones are preserved.
-8. Use **Save** / **Load** to persist sessions as JSON.
+7. Alternatively, click **Enter Coordinates** to place a point from a typed coordinate (DD, DDM, MGRS, or UTM).
+8. Repeat to add more zones — previous zones are preserved.
+9. Use **Save** / **Load** to persist sessions as JSON.
 
 > [!NOTE]
 > Buffers are computed as geodesic buffers using `geometryEngineAsync.geodesicBuffer`, ensuring accurate distances regardless of map projection. All distances are stored in feet internally and converted to meters using `FT_TO_M = 0.3048`.
@@ -152,6 +154,7 @@ The session JSON file saves all zone groups with their full geometry. It can be 
 - Uses `SketchViewModel` for interactive drawing and `geometryEngineAsync` for geodesic buffer computation.
 - Three separate `GraphicsLayer` instances: buffer zones (popup-enabled), text labels (popup-disabled), sketch inputs (popup-disabled).
 - Popup is triggered via `view.hitTest()` + `view.popup.open()` for reliable behavior in the ExB environment. The popup displays zone type, threat type, distance, and unit.
+- Coordinate input uses `esri/geometry/coordinateFormatter` (loaded asynchronously on map ready) for MGRS and UTM parsing; DD and DDM are parsed natively with support for any number of decimal places and optional N/S/E/W suffixes.
 - Styling via `jimu-core` CSS-in-JS (`css` tagged template), fully theme-aware.
 
 ---

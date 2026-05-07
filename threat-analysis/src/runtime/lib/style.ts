@@ -94,5 +94,26 @@ export function getStyle(theme: ThemeVariables, _widgetConfig: IMConfig): Serial
       flex: 1;
       font-size: 11px;
     }
+
+    .threat-coord-toggle {
+      width: 100%;
+    }
+
+    .threat-coord-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+      padding: 8px;
+      border: 1px solid ${theme.colors?.palette?.dark?.[200] || '#ddd'};
+      border-radius: 4px;
+    }
+
+    .threat-coord-error {
+      font-size: 11px;
+      color: #cc0000;
+      font-style: italic;
+      margin: 0;
+    }
   `;
 }

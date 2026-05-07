@@ -2,7 +2,7 @@
 import { React, AllWidgetProps, jsx } from 'jimu-core';
 import { IMConfig, THREAT_TYPES, Unit, toMeters } from '../config';
 import { JimuMapView, JimuMapViewComponent } from 'jimu-arcgis';
-import { Button, Select, Option, Label } from 'jimu-ui';
+import { Button, Select, Option, Label, TextInput } from 'jimu-ui';
 import { getStyle } from './lib/style';
 import defaultMessages from './translations/default';
 
@@ -17,8 +17,13 @@ import TextSymbol from 'esri/symbols/TextSymbol';
 import Point from 'esri/geometry/Point';
 import Color from 'esri/Color';
 import { fromJSON as geometryFromJSON } from 'esri/geometry/support/jsonUtils';
+import coordinateFormatter from 'esri/geometry/coordinateFormatter';
+import SpatialReference from 'esri/geometry/SpatialReference';
+
+const WGS84_SR = new SpatialReference({ wkid: 4326 });
 
 type DrawTool = 'point' | 'polyline' | 'polygon';
+type CoordFormat = 'DD' | 'DDM' | 'MGRS' | 'UTM';
 
 interface ZoneGroup {
   id: string;
@@ -39,6 +44,15 @@ interface State {
   hasZones: boolean;
   statusMsg: string;
   zoneGroups: ZoneGroup[];
+  showCoordInput: boolean;
+  coordFormat: CoordFormat;
+  coordLat: string;
+  coordLon: string;
+  mgrsValue: string;
+  utmZone: string;
+  utmEasting: string;
+  utmNorthing: string;
+  coordError: string;
 }
 
 // Input sketch symbols — blue transparent fill (alpha 0-1), opaque outline
@@ -100,6 +114,31 @@ function makePopupTemplate(threatLabel: string, zoneType: string, distanceFt: nu
   };
 }
 
+function parseDDValue(str: string): number | null {
+  str = str.trim().toUpperCase().replace(/[°]/g, '').trim();
+  let sign = 1;
+  if (/[SW]$/.test(str)) { sign = -1; str = str.slice(0, -1).trim(); }
+  else if (/[NE]$/.test(str)) { str = str.slice(0, -1).trim(); }
+  if (str.startsWith('-')) { sign *= -1; str = str.slice(1).trim(); }
+  const val = parseFloat(str);
+  return isNaN(val) ? null : val * sign;
+}
+
+function parseDDMValue(str: string): number | null {
+  str = str.trim().toUpperCase();
+  let sign = 1;
+  if (/[SW]$/.test(str)) { sign = -1; str = str.slice(0, -1).trim(); }
+  else if (/[NE]$/.test(str)) { str = str.slice(0, -1).trim(); }
+  if (str.startsWith('-')) { sign *= -1; str = str.slice(1).trim(); }
+  str = str.replace(/[°'"]/g, ' ').replace(/\s+/g, ' ').trim();
+  const parts = str.split(' ').filter(Boolean);
+  if (parts.length < 2) return null;
+  const deg = parseFloat(parts[0]);
+  const min = parseFloat(parts[1]);
+  if (isNaN(deg) || isNaN(min) || min < 0 || min >= 60) return null;
+  return sign * (deg + min / 60);
+}
+
 function getSketchSymbol(drawTool: DrawTool): any {
   if (drawTool === 'polyline') return inputLineSymbol;
   if (drawTool === 'polygon') return inputPolygonSymbol;
@@ -115,6 +154,7 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
   private clickHandle: IHandle | null = null;
   private lastDrawTool: DrawTool = 'point';
   private fileInputRef: React.RefObject<HTMLInputElement> = React.createRef();
+  private coordModulesReady: Promise<void> | null = null;
 
   constructor(props: AllWidgetProps<IMConfig>) {
     super(props);
@@ -126,6 +166,15 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
       hasZones: false,
       statusMsg: '',
       zoneGroups: [],
+      showCoordInput: false,
+      coordFormat: 'DD',
+      coordLat: '',
+      coordLon: '',
+      mgrsValue: '',
+      utmZone: '',
+      utmEasting: '',
+      utmNorthing: '',
+      coordError: '',
     };
   }
 
@@ -155,6 +204,8 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
         this.onSketchComplete(event.graphic);
       }
     });
+
+    this.coordModulesReady = coordinateFormatter.load();
 
     this.clickHandle = jimuMapView.view.on('click', async (event) => {
       if (this.state.activeTool) return;
@@ -282,6 +333,48 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
     ]);
   };
 
+  placeCoordPoint = async () => {
+    const { coordFormat, coordLat, coordLon, mgrsValue, utmZone, utmEasting, utmNorthing } = this.state;
+    if (!this.state.jimuMapView) return;
+
+    if (this.coordModulesReady) await this.coordModulesReady;
+
+    let mapPoint: __esri.Point | null = null;
+
+    try {
+      if (coordFormat === 'DD') {
+        const lat = parseDDValue(coordLat);
+        const lon = parseDDValue(coordLon);
+        if (lat === null || lon === null || lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error();
+        mapPoint = new Point({ latitude: lat, longitude: lon, spatialReference: WGS84_SR });
+      } else if (coordFormat === 'DDM') {
+        const lat = parseDDMValue(coordLat);
+        const lon = parseDDMValue(coordLon);
+        if (lat === null || lon === null || lat < -90 || lat > 90 || lon < -180 || lon > 180) throw new Error();
+        mapPoint = new Point({ latitude: lat, longitude: lon, spatialReference: WGS84_SR });
+      } else if (coordFormat === 'MGRS') {
+        mapPoint = coordinateFormatter.fromMgrs(mgrsValue.trim(), WGS84_SR, 'automatic');
+      } else if (coordFormat === 'UTM') {
+        const utmStr = `${utmZone.trim()} ${utmEasting.trim()} ${utmNorthing.trim()}`;
+        mapPoint = coordinateFormatter.fromUtm(utmStr, WGS84_SR, 'latitude-band-indicators')
+          || coordinateFormatter.fromUtm(utmStr, WGS84_SR, 'north-south-indicators');
+      }
+    } catch {
+      this.setState({ coordError: this.nls('coordInvalidError') });
+      return;
+    }
+
+    if (!mapPoint) {
+      this.setState({ coordError: this.nls('coordInvalidError') });
+      return;
+    }
+
+    this.setState({ coordError: '', activeTool: null, statusMsg: '' });
+    this.lastDrawTool = 'point';
+    this.sketchLayer?.add(new Graphic({ geometry: mapPoint, symbol: inputPointSymbol }));
+    await this.createZonesFromGeometry(mapPoint);
+  };
+
   clearAll = () => {
     this.graphicsLayer?.removeAll();
     this.labelLayer?.removeAll();
@@ -339,7 +432,10 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
   };
 
   render() {
-    const { jimuMapView, selectedThreatIndex, selectedUnit, activeTool, hasZones, statusMsg } = this.state;
+    const {
+      jimuMapView, selectedThreatIndex, selectedUnit, activeTool, hasZones, statusMsg,
+      showCoordInput, coordFormat, coordLat, coordLon, mgrsValue, utmZone, utmEasting, utmNorthing, coordError,
+    } = this.state;
     const { theme, useMapWidgetIds, config } = this.props;
 
     const threat = THREAT_TYPES[selectedThreatIndex];
@@ -397,6 +493,91 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
                   </Button>
                 ))}
               </div>
+            </div>
+
+            {/* Fixed coordinate input */}
+            <div>
+              <Button
+                size="sm"
+                type={showCoordInput ? 'primary' : 'default'}
+                className="threat-coord-toggle"
+                onClick={() => this.setState((prev) => ({ showCoordInput: !prev.showCoordInput, coordError: '' }))}
+              >
+                {this.nls('enterCoordinates')}
+              </Button>
+
+              {showCoordInput && (
+                <div className="threat-coord-section">
+                  <Select
+                    value={coordFormat}
+                    onChange={(e) => this.setState({ coordFormat: e.target.value as CoordFormat, coordError: '' })}
+                    size="sm"
+                  >
+                    <Option value="DD">DD — Decimal Degrees</Option>
+                    <Option value="DDM">DDM — Deg. Decimal Min.</Option>
+                    <Option value="MGRS">MGRS</Option>
+                    <Option value="UTM">UTM</Option>
+                  </Select>
+
+                  {(coordFormat === 'DD' || coordFormat === 'DDM') && (
+                    <div>
+                      <TextInput
+                        size="sm"
+                        value={coordLat}
+                        onChange={(e) => this.setState({ coordLat: (e.target as HTMLInputElement).value, coordError: '' })}
+                        placeholder={coordFormat === 'DD' ? 'Lat: 50.8503 or 50.8503 N' : 'Lat: 50 51.018 N'}
+                      />
+                      <TextInput
+                        size="sm"
+                        value={coordLon}
+                        onChange={(e) => this.setState({ coordLon: (e.target as HTMLInputElement).value, coordError: '' })}
+                        placeholder={coordFormat === 'DD' ? 'Lon: 4.3517 or 4.3517 E' : 'Lon: 4 21.102 E'}
+                        style={{ marginTop: 4 }}
+                      />
+                    </div>
+                  )}
+
+                  {coordFormat === 'MGRS' && (
+                    <TextInput
+                      size="sm"
+                      value={mgrsValue}
+                      onChange={(e) => this.setState({ mgrsValue: (e.target as HTMLInputElement).value, coordError: '' })}
+                      placeholder="e.g. 31UES8428519180"
+                    />
+                  )}
+
+                  {coordFormat === 'UTM' && (
+                    <div>
+                      <TextInput
+                        size="sm"
+                        value={utmZone}
+                        onChange={(e) => this.setState({ utmZone: (e.target as HTMLInputElement).value, coordError: '' })}
+                        placeholder="Zone (e.g. 31U)"
+                      />
+                      <TextInput
+                        size="sm"
+                        value={utmEasting}
+                        onChange={(e) => this.setState({ utmEasting: (e.target as HTMLInputElement).value, coordError: '' })}
+                        placeholder="Easting"
+                        style={{ marginTop: 4 }}
+                      />
+                      <TextInput
+                        size="sm"
+                        value={utmNorthing}
+                        onChange={(e) => this.setState({ utmNorthing: (e.target as HTMLInputElement).value, coordError: '' })}
+                        placeholder="Northing"
+                        style={{ marginTop: 4 }}
+                      />
+                    </div>
+                  )}
+
+                  {coordError && <p className="threat-coord-error">{coordError}</p>}
+
+                  <Button size="sm" type="primary" onClick={this.placeCoordPoint} style={{ width: '100%' }}>
+                    {this.nls('placePoint')}
+                  </Button>
+                </div>
+              )}
             </div>
 
             {statusMsg && <p className="threat-status-msg">{statusMsg}</p>}

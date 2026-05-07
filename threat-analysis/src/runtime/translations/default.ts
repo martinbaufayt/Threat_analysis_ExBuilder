@@ -24,4 +24,8 @@ export default {
   invalidSession: 'Invalid session file.',
   zone: 'Zone',
   distance: 'Distance',
+  enterCoordinates: 'Enter Coordinates',
+  placePoint: 'Place Point',
+  coordInvalidError: 'Invalid coordinate format.',
+  coordProjectError: 'Could not project coordinate to map.',
 }

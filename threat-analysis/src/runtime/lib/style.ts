@@ -50,17 +50,16 @@ export function getStyle(theme: ThemeVariables, _widgetConfig: IMConfig): Serial
       height: 16px;
       border-radius: 3px;
       flex-shrink: 0;
-      border: 1px solid rgba(0,0,0,0.2);
     }
 
     .threat-zone-swatch.mandatory {
-      background: rgba(204, 0, 0, 0.5);
-      border-color: #CC0000;
+      background: rgba(204, 0, 0, 0.24);
+      border: 2px solid rgba(204, 0, 0, 0.86);
     }
 
     .threat-zone-swatch.preferred {
-      background: rgba(255, 140, 0, 0.35);
-      border-color: #FF8C00;
+      background: rgba(255, 140, 0, 0.18);
+      border: 2px solid rgba(255, 140, 0, 0.86);
     }
 
     .threat-zone-distance {
@@ -77,11 +76,23 @@ export function getStyle(theme: ThemeVariables, _widgetConfig: IMConfig): Serial
 
     .threat-actions {
       display: flex;
-      gap: 8px;
+      gap: 6px;
     }
 
     .threat-actions .jimu-btn {
       flex: 1;
+    }
+
+    .threat-session {
+      display: flex;
+      gap: 6px;
+      border-top: 1px solid ${theme.colors?.palette?.dark?.[200] || '#ddd'};
+      padding-top: 10px;
+    }
+
+    .threat-session .jimu-btn {
+      flex: 1;
+      font-size: 11px;
     }
   `;
 }

@@ -39,8 +39,8 @@ export default class Setting extends React.PureComponent<AllWidgetSettingProps<I
               onChange={(e) => this.onPropertyChange('defaultUnit', e.target.value as Unit)}
               size="sm"
             >
-              <Option value="feet">Feet</Option>
               <Option value="meters">Meters</Option>
+              <Option value="feet">Feet</Option>
             </Select>
           </SettingRow>
 

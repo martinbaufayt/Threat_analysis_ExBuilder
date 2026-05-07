@@ -4,7 +4,7 @@
 
 A custom widget for [ArcGIS Experience Builder](https://www.esri.com/en-us/arcgis/products/arcgis-experience-builder/overview) that replicates the Threat Analysis functionality from ArcGIS Web AppBuilder.
 
-It lets users interactively draw a point, polyline, or polygon on a map, select a threat type, and instantly generate two geodesic buffer zones — **Mandatory Evacuation** and **Preferred Evacuation** — based on standardized safe-standoff distances. Designed for public safety, crisis management, and civil protection use cases.
+Users interactively draw a point, polyline, or polygon on a map, select a threat type, and instantly generate two geodesic buffer zones — **Mandatory Evacuation** and **Preferred Evacuation** — based on standardized safe-standoff distances. Designed for public safety, crisis management, and civil protection use cases.
 
 ---
 
@@ -13,13 +13,21 @@ It lets users interactively draw a point, polyline, or polygon on a map, select 
 - Interactive drawing tools: point, polyline, or polygon as threat origin
 - 8 built-in threat types with standard IEDL safe-standoff distances
 - Dual buffer zones rendered simultaneously:
-  - Mandatory Evacuation Zone (red)
-  - Preferred Evacuation Zone (orange)
+  - Mandatory Evacuation Zone (red, transparent fill with opaque outline)
+  - Preferred Evacuation Zone (orange, transparent fill with opaque outline)
+- Input sketch rendered in blue (transparent fill, opaque outline)
+- **Cumulative zones** — each new sketch adds to the map without clearing previous zones
+- **Clickable buffers** — click any zone to open a popup with threat type, zone type, and distance
 - Distance labels on both zones
-- Unit toggle: feet or meters
-- Auto-zoom to the created zones
-- Clear button to reset the map
-- Configurable defaults (unit and threat type) from the ExB settings panel
+- Unit toggle: meters (default) or feet
+- Auto-zoom to the newly created zones
+- Clear All button to reset the map
+
+### Session management
+
+- **Save** — exports the full session (all zone groups with geometries and metadata) as a `.json` file
+- **Load** — restores a previously saved session from a `.json` file
+- **Export GeoJSON** — exports all buffer zones as a standard GeoJSON file (WGS84) for import into ArcGIS Online or any GIS tool
 
 ---
 
@@ -27,14 +35,14 @@ It lets users interactively draw a point, polyline, or polygon on a map, select 
 
 | Threat Type | Mandatory Evacuation | Preferred Evacuation |
 |---|---|---|
-| Pipe Bomb | 70 ft | 1,200 ft |
-| Suicide Bomb | 110 ft | 1,700 ft |
-| Briefcase Bomb | 150 ft | 1,850 ft |
-| Car Bomb | 320 ft | 1,900 ft |
-| SUV / Van Bomb | 400 ft | 2,400 ft |
-| Small Delivery Truck Bomb | 640 ft | 3,800 ft |
-| Container / Water Truck Bomb | 860 ft | 5,100 ft |
-| Semi-Trailer Bomb | 1,570 ft | 9,300 ft |
+| Pipe Bomb | 70 ft / 21 m | 1,200 ft / 366 m |
+| Suicide Bomb | 110 ft / 34 m | 1,700 ft / 518 m |
+| Briefcase Bomb | 150 ft / 46 m | 1,850 ft / 564 m |
+| Car Bomb | 320 ft / 98 m | 1,900 ft / 579 m |
+| SUV / Van Bomb | 400 ft / 122 m | 2,400 ft / 732 m |
+| Small Delivery Truck Bomb | 640 ft / 195 m | 3,800 ft / 1,158 m |
+| Container / Water Truck Bomb | 860 ft / 262 m | 5,100 ft / 1,554 m |
+| Semi-Trailer Bomb | 1,570 ft / 479 m | 9,300 ft / 2,835 m |
 
 ---
 
@@ -43,14 +51,14 @@ It lets users interactively draw a point, polyline, or polygon on a map, select 
 ```
 threat-analysis/
 ├── manifest.json                        # Widget metadata (ExB 1.17.0)
-├── config.json                          # Default configuration values
+├── config.json                          # Default configuration (unit: meters)
 ├── icon.svg
 └── src/
     ├── config.ts                        # Types, threat data, unit conversion
     ├── runtime/
     │   ├── widget.tsx                   # Main widget component
     │   ├── translations/default.ts      # UI strings
-    │   └── lib/style.ts                 # CSS-in-JS styles
+    │   └── lib/style.ts                 # CSS-in-JS styles (theme-aware)
     └── setting/
         └── setting.tsx                  # ExB configuration panel
 ```
@@ -91,7 +99,7 @@ threat-analysis/
 In the ExB builder, open the widget settings panel to:
 
 - Connect the widget to a **Map** widget
-- Set the **default unit** (feet or meters)
+- Set the **default unit** (meters or feet)
 - Set the **default threat type**
 
 ---
@@ -99,23 +107,54 @@ In the ExB builder, open the widget settings panel to:
 ## How It Works
 
 1. Select a **threat type** from the dropdown.
-2. Select the **unit** (feet or meters).
+2. Select the **unit** (meters or feet).
 3. Click **Point**, **Polyline**, or **Polygon** to activate a drawing tool.
 4. Draw on the map — zones are generated automatically when the sketch is complete.
-5. Two buffer zones appear: the inner red zone (mandatory evacuation) and the outer orange zone (preferred evacuation), both computed as geodesic buffers using `geometryEngineAsync.geodesicBuffer`.
-6. Click **Clear** to reset.
+5. Two buffer zones appear around the sketch:
+   - Inner red zone: Mandatory Evacuation
+   - Outer orange zone: Preferred Evacuation
+6. Click any buffer zone to open a popup showing the threat type, zone type, and distance.
+7. Repeat from step 1 to add more zones — previous zones are preserved.
+8. Use **Save** / **Load** to persist sessions as JSON, or **Export GeoJSON** to share the data.
 
 > [!NOTE]
-> Buffers are always computed in meters internally (converted from feet using `FT_TO_M = 0.3048`), then displayed in the unit chosen by the user.
+> Buffers are computed as geodesic buffers using `geometryEngineAsync.geodesicBuffer`, ensuring accurate distances regardless of map projection. All distances are stored in feet internally and converted to meters using `FT_TO_M = 0.3048`.
+
+---
+
+## Session File Format
+
+The session JSON file saves all zone groups with their full geometry. It can be reloaded in any subsequent session:
+
+```json
+{
+  "version": "1.0",
+  "savedAt": "2025-05-07T...",
+  "zoneGroups": [
+    {
+      "id": "1715000000000",
+      "threatIndex": 3,
+      "threatLabel": "Car Bomb",
+      "unit": "meters",
+      "drawTool": "point",
+      "sketchGeometryJson": { ... },
+      "mandatoryGeometryJson": { ... },
+      "preferredGeometryJson": { ... }
+    }
+  ]
+}
+```
 
 ---
 
 ## Technical Notes
 
-- Built with the **ArcGIS Maps SDK for JavaScript** (AMD-style imports via `esri/`) inside the ExB / jimu-core framework.
+- Built with the **ArcGIS Maps SDK for JavaScript** (AMD-style `esri/` imports) inside the ExB / jimu-core framework.
 - Uses `SketchViewModel` for interactive drawing and `geometryEngineAsync` for geodesic buffer computation.
-- Styling via `jimu-core` CSS-in-JS (`css` tagged template), theme-aware.
-- Widget state is managed as a React class component (`React.PureComponent`), consistent with the ExB widget conventions.
+- Three separate `GraphicsLayer` instances: buffer zones (popup-enabled), text labels (popup-disabled), sketch inputs (popup-disabled).
+- Popup is triggered via `view.hitTest()` + `view.popup.open()` for reliable behavior in the ExB environment.
+- GeoJSON export projects geometries from Web Mercator to WGS84 using `webMercatorUtils.webMercatorToGeographic`.
+- Styling via `jimu-core` CSS-in-JS (`css` tagged template), fully theme-aware.
 
 ---
 

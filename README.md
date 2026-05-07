@@ -17,7 +17,7 @@ Users interactively draw a point, polyline, or polygon on a map, select a threat
   - Preferred Evacuation Zone (orange, transparent fill with opaque outline)
 - Input sketch rendered in blue (transparent fill, opaque outline)
 - **Cumulative zones** — each new sketch adds to the map without clearing previous zones
-- **Clickable buffers** — click any zone to open a popup with threat type, zone type, and distance
+- **Clickable buffers** — click any zone to open a popup with zone type, threat type, distance, and unit
 - Distance labels on both zones
 - Unit toggle: meters (default) or feet
 - Auto-zoom to the newly created zones
@@ -27,7 +27,6 @@ Users interactively draw a point, polyline, or polygon on a map, select a threat
 
 - **Save** — exports the full session (all zone groups with geometries and metadata) as a `.json` file
 - **Load** — restores a previously saved session from a `.json` file
-- **Export GeoJSON** — exports all buffer zones as a standard GeoJSON file (WGS84) for import into ArcGIS Online or any GIS tool
 
 ---
 
@@ -113,9 +112,9 @@ In the ExB builder, open the widget settings panel to:
 5. Two buffer zones appear around the sketch:
    - Inner red zone: Mandatory Evacuation
    - Outer orange zone: Preferred Evacuation
-6. Click any buffer zone to open a popup showing the threat type, zone type, and distance.
+6. Click any buffer zone to open a popup showing the zone type, threat type, distance, and unit.
 7. Repeat from step 1 to add more zones — previous zones are preserved.
-8. Use **Save** / **Load** to persist sessions as JSON, or **Export GeoJSON** to share the data.
+8. Use **Save** / **Load** to persist sessions as JSON.
 
 > [!NOTE]
 > Buffers are computed as geodesic buffers using `geometryEngineAsync.geodesicBuffer`, ensuring accurate distances regardless of map projection. All distances are stored in feet internally and converted to meters using `FT_TO_M = 0.3048`.
@@ -152,8 +151,7 @@ The session JSON file saves all zone groups with their full geometry. It can be 
 - Built with the **ArcGIS Maps SDK for JavaScript** (AMD-style `esri/` imports) inside the ExB / jimu-core framework.
 - Uses `SketchViewModel` for interactive drawing and `geometryEngineAsync` for geodesic buffer computation.
 - Three separate `GraphicsLayer` instances: buffer zones (popup-enabled), text labels (popup-disabled), sketch inputs (popup-disabled).
-- Popup is triggered via `view.hitTest()` + `view.popup.open()` for reliable behavior in the ExB environment.
-- GeoJSON export projects geometries from Web Mercator to WGS84 using `webMercatorUtils.webMercatorToGeographic`.
+- Popup is triggered via `view.hitTest()` + `view.popup.open()` for reliable behavior in the ExB environment. The popup displays zone type, threat type, distance, and unit.
 - Styling via `jimu-core` CSS-in-JS (`css` tagged template), fully theme-aware.
 
 ---

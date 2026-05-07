@@ -16,7 +16,6 @@ import SimpleMarkerSymbol from 'esri/symbols/SimpleMarkerSymbol';
 import TextSymbol from 'esri/symbols/TextSymbol';
 import Point from 'esri/geometry/Point';
 import Color from 'esri/Color';
-import webMercatorUtils from 'esri/geometry/support/webMercatorUtils';
 import { fromJSON as geometryFromJSON } from 'esri/geometry/support/jsonUtils';
 
 type DrawTool = 'point' | 'polyline' | 'polygon';
@@ -42,33 +41,33 @@ interface State {
   zoneGroups: ZoneGroup[];
 }
 
-// Input sketch symbols — blue transparent fill, opaque outline
+// Input sketch symbols — blue transparent fill (alpha 0-1), opaque outline
 const inputPointSymbol = new SimpleMarkerSymbol({
-  color: new Color([0, 120, 255, 60]),
-  outline: new SimpleLineSymbol({ color: new Color([0, 80, 220, 220]), width: 2 }),
+  color: new Color([0, 120, 255, 0.2]),
+  outline: new SimpleLineSymbol({ color: new Color([0, 80, 220, 0.85]), width: 2 }),
   size: 12,
   style: 'circle',
 });
 
 const inputLineSymbol = new SimpleLineSymbol({
-  color: new Color([0, 80, 220, 200]),
+  color: new Color([0, 80, 220, 0.85]),
   width: 2.5,
 });
 
 const inputPolygonSymbol = new SimpleFillSymbol({
-  color: new Color([0, 120, 255, 50]),
-  outline: new SimpleLineSymbol({ color: new Color([0, 80, 220, 220]), width: 2 }),
+  color: new Color([0, 120, 255, 0.2]),
+  outline: new SimpleLineSymbol({ color: new Color([0, 80, 220, 0.85]), width: 2 }),
 });
 
 // Buffer zone symbols — transparent fill, opaque outline
 const mandatoryFillSymbol = new SimpleFillSymbol({
-  color: new Color([204, 0, 0, 60]),
-  outline: new SimpleLineSymbol({ color: new Color([204, 0, 0, 220]), width: 2 }),
+  color: new Color([204, 0, 0, 0.2]),
+  outline: new SimpleLineSymbol({ color: new Color([204, 0, 0, 0.85]), width: 2 }),
 });
 
 const preferredFillSymbol = new SimpleFillSymbol({
-  color: new Color([255, 140, 0, 45]),
-  outline: new SimpleLineSymbol({ color: new Color([255, 140, 0, 220]), width: 2 }),
+  color: new Color([255, 140, 0, 0.15]),
+  outline: new SimpleLineSymbol({ color: new Color([255, 140, 0, 0.85]), width: 2 }),
 });
 
 function makeTextSymbol(text: string, color: Color): TextSymbol {
@@ -92,17 +91,13 @@ function formatDistance(feet: number, unit: Unit): string {
 
 function makePopupTemplate(threatLabel: string, zoneType: string, distanceFt: number, unit: Unit): __esri.PopupTemplateProperties {
   return {
-    title: threatLabel,
-    content: `<b>Zone:</b> ${zoneType}<br><b>Distance:</b> ${formatDistance(distanceFt, unit)}`,
+    title: zoneType,
+    content: `
+      <b>Threat Type:</b> ${threatLabel}<br>
+      <b>Distance:</b> ${formatDistance(distanceFt, unit)}<br>
+      <b>Unit:</b> ${unit === 'meters' ? 'Meters' : 'Feet'}
+    `,
   };
-}
-
-function toGeoJSONPolygon(polygon: __esri.Polygon): any {
-  let geom: __esri.Polygon = polygon;
-  if (polygon.spatialReference?.isWebMercator) {
-    geom = webMercatorUtils.webMercatorToGeographic(polygon) as __esri.Polygon;
-  }
-  return { type: 'Polygon', coordinates: geom.rings };
 }
 
 function getSketchSymbol(drawTool: DrawTool): any {
@@ -140,8 +135,10 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
     this.setState({ jimuMapView });
 
     this.graphicsLayer = new GraphicsLayer({ listMode: 'hide' });
-    this.labelLayer = new GraphicsLayer({ listMode: 'hide', popupEnabled: false } as any);
-    this.sketchLayer = new GraphicsLayer({ listMode: 'hide', popupEnabled: false } as any);
+    this.labelLayer = new GraphicsLayer({ listMode: 'hide' });
+    this.labelLayer.popupEnabled = false;
+    this.sketchLayer = new GraphicsLayer({ listMode: 'hide' });
+    this.sketchLayer.popupEnabled = false;
     jimuMapView.view.map.addMany([this.graphicsLayer, this.labelLayer, this.sketchLayer]);
 
     this.sketchViewModel = new SketchViewModel({
@@ -327,41 +324,6 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
     event.target.value = '';
   };
 
-  exportGeoJSON = () => {
-    const features = this.state.zoneGroups.flatMap((group) => {
-      const threat = THREAT_TYPES[group.threatIndex];
-      const mandatoryGeom = geometryFromJSON(group.mandatoryGeometryJson) as __esri.Polygon;
-      const preferredGeom = geometryFromJSON(group.preferredGeometryJson) as __esri.Polygon;
-      return [
-        {
-          type: 'Feature',
-          properties: {
-            threatType: threat.label,
-            zoneType: 'Mandatory Evacuation',
-            distanceFt: threat.mandatoryFt,
-            distanceM: Math.round(toMeters(threat.mandatoryFt)),
-            unit: group.unit,
-          },
-          geometry: toGeoJSONPolygon(mandatoryGeom),
-        },
-        {
-          type: 'Feature',
-          properties: {
-            threatType: threat.label,
-            zoneType: 'Preferred Evacuation',
-            distanceFt: threat.preferredFt,
-            distanceM: Math.round(toMeters(threat.preferredFt)),
-            unit: group.unit,
-          },
-          geometry: toGeoJSONPolygon(preferredGeom),
-        },
-      ];
-    });
-
-    const geojson = { type: 'FeatureCollection', features };
-    this.downloadBlob(JSON.stringify(geojson, null, 2), 'threat-analysis-zones.geojson', 'application/geo+json');
-  };
-
   downloadBlob = (content: string, filename: string, type: string) => {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
@@ -456,9 +418,6 @@ export default class Widget extends React.PureComponent<AllWidgetProps<IMConfig>
               <div className="threat-actions">
                 <Button size="sm" type="danger" onClick={this.clearAll}>
                   {this.nls('clearZones')}
-                </Button>
-                <Button size="sm" type="secondary" onClick={this.exportGeoJSON}>
-                  {this.nls('exportGeoJSON')}
                 </Button>
               </div>
             )}

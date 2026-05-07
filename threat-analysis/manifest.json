@@ -1,0 +1,22 @@
+{
+  "name": "threat-analysis",
+  "type": "widget",
+  "version": "1.17.0",
+  "exbVersion": "1.17.0",
+  "author": "Martin Baufayt",
+  "label": "Threat Analysis",
+  "description": "Analyze the potential impact of a threat around a point or area on a map. Creates mandatory evacuation and preferred evacuation buffer zones based on standard threat distances.",
+  "copyright": "2025",
+  "license": "http://www.apache.org/licenses/LICENSE-2.0",
+  "properties": {},
+  "translatedLocales": [
+    "en"
+  ],
+  "dependency": [
+    "jimu-arcgis"
+  ],
+  "defaultSize": {
+    "width": 340,
+    "height": 480
+  }
+}
